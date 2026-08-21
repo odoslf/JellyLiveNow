@@ -1,0 +1,12 @@
+# .NET build and obj outputs
+[Bb]in/
+[Oo]bj/
+*.user
+*.userosscache
+*.sln.docstates
+
+# IDE files
+.vscode/
+.idea/
+*.suo
+*.user

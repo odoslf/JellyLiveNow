@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>JellyLiveNow Configuration</title>
+</head>
+<body>
+    <div data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-button,emby-checkbox,emby-input">
+        <div data-role="content">
+            <div class="content-primary">
+                <form class="jellyLiveNowConfigurationForm">
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input type="checkbox" is="emby-checkbox" id="chkEnableJellyLiveNow" name="EnableJellyLiveNow" />
+                            <span>Activar JellyLiveNow</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">
+                            Muestra el canal activo en "Viendo en TV" cuando alguien esté viendo televisión en directo.
+                        </div>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input type="checkbox" is="emby-checkbox" id="chkEnableWebBanner" name="EnableWebBanner" />
+                            <span>Activar banner en cliente Web</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">
+                            Muestra un banner superior en Jellyfin Web cuando un canal Live TV esté activo.
+                        </div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabelLabel" for="txtChannelName">Nombre del canal / contenedor:</label>
+                        <input type="text" is="emby-input" id="txtChannelName" name="ChannelName" label="Nombre del canal:" />
+                        <div class="fieldDescription">
+                            Nombre que aparecerá en la biblioteca/canales (por defecto: Viendo en TV).
+                        </div>
+                    </div>
+
+                    <div>
+                        <button is="emby-button" type="submit" class="raised button-submit block">
+                            <span>Guardar</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <script type="text/javascript">
+            var JellyLiveNowConfigPage = {
+                pluginUniqueId: "c7f3299c-e35c-4122-8356-d710e2098b95"
+            };
+
+            $('.pluginConfigurationPage').on('pageshow', function () {
+                Dashboard.showLoadingMsg();
+                var page = this;
+                ApiClient.getPluginConfiguration(JellyLiveNowConfigPage.pluginUniqueId).then(function (config) {
+                    $('#chkEnableJellyLiveNow', page).prop('checked', config.EnableJellyLiveNow).checkboxradio('refresh');
+                    $('#chkEnableWebBanner', page).prop('checked', config.EnableWebBanner).checkboxradio('refresh');
+                    $('#txtChannelName', page).val(config.ChannelName || 'Viendo en TV');
+                    Dashboard.hideLoadingMsg();
+                });
+            });
+
+            $('.jellyLiveNowConfigurationForm').on('submit', function () {
+                Dashboard.showLoadingMsg();
+                var page = $(this).parents('.pluginConfigurationPage')[0];
+                ApiClient.getPluginConfiguration(JellyLiveNowConfigPage.pluginUniqueId).then(function (config) {
+                    config.EnableJellyLiveNow = $('#chkEnableJellyLiveNow', page).prop('checked');
+                    config.EnableWebBanner = $('#chkEnableWebBanner', page).prop('checked');
+                    config.ChannelName = $('#txtChannelName', page).val() || 'Viendo en TV';
+                    ApiClient.updatePluginConfiguration(JellyLiveNowConfigPage.pluginUniqueId, config).then(function (result) {
+                        Dashboard.processPluginConfigurationUpdateResult(result);
+                    });
+                });
+                return false;
+            });
+        </script>
+    </div>
+</body>
+</html>
