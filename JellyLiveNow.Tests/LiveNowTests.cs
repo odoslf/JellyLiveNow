@@ -18,6 +18,7 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Controller.Session;
 using MediaBrowser.Model.Dto;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Serialization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -126,6 +127,14 @@ public class LiveNowTests
         Assert.Single(result);
         _mediaSourceManagerMock.Verify(
             m => m.GetPlaybackMediaSources(live, null!, false, false, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ChannelImage_ReturnsExplicitNoImageResponse()
+    {
+        var response = await CreateChannel(CreateManager()).GetChannelImage(ImageType.Primary, CancellationToken.None);
+        Assert.NotNull(response);
+        Assert.False(response.HasImage);
     }
 
     [Fact]

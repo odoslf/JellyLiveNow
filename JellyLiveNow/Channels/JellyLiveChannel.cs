@@ -40,7 +40,7 @@ public class JellyLiveChannel : IChannel, IHasFolderAttributes, IRequiresMediaIn
 
     public string Name => Plugin.Instance?.Configuration.ChannelName ?? "Viendo en TV";
     public string Description => "Canal en directo activo actualmente en el servidor";
-    public string DataVersion => "1.0.1.0";
+    public string DataVersion => "1.0.2.0";
     public string HomePageUrl => string.Empty;
     public ChannelParentalRating ParentalRating => ChannelParentalRating.GeneralAudience;
     public string[] Attributes => new[] { "ViendoEnTV" };
@@ -66,6 +66,7 @@ public class JellyLiveChannel : IChannel, IHasFolderAttributes, IRequiresMediaIn
 
     public Task<ChannelItemResult> GetChannelItems(InternalChannelItemQuery query, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         _liveNowManager.RefreshActiveChannelState();
         var result = new ChannelItemResult { Items = Array.Empty<ChannelItemInfo>() };
         var activeChannelId = _liveNowManager.ActiveChannelId;
@@ -96,8 +97,7 @@ public class JellyLiveChannel : IChannel, IHasFolderAttributes, IRequiresMediaIn
                 Type = ChannelItemType.Media,
                 MediaType = ChannelMediaType.Video,
                 IsLiveStream = true,
-                Overview = overview,
-                ImageUrl = _liveNowManager.ActiveImageUrl
+                Overview = overview
             }
         };
         result.TotalRecordCount = 1;
@@ -106,6 +106,7 @@ public class JellyLiveChannel : IChannel, IHasFolderAttributes, IRequiresMediaIn
 
     public async Task<IEnumerable<MediaSourceInfo>> GetChannelItemMediaInfo(string id, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (!Guid.TryParse(id, out var channelGuid))
         {
             _logger.LogWarning("Invalid Live TV channel id {ChannelId}", id);
@@ -127,7 +128,10 @@ public class JellyLiveChannel : IChannel, IHasFolderAttributes, IRequiresMediaIn
     }
 
     public Task<DynamicImageResponse> GetChannelImage(ImageType type, CancellationToken cancellationToken)
-        => Task.FromResult<DynamicImageResponse>(null!);
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new DynamicImageResponse { HasImage = false });
+    }
 
     public IEnumerable<ImageType> GetSupportedChannelImages()
         => Array.Empty<ImageType>();

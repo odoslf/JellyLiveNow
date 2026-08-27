@@ -11,10 +11,21 @@ Plugin para Jellyfin Server **10.10.7 / .NET 8** que detecta si existe una repro
 - No expone usuario, IP, dispositivo ni número de espectadores.
 - Implementa `IChannel` + `IRequiresMediaInfoCallback` y registra el proveedor como `IChannel` en el contenedor DI de Jellyfin.
 - Para reproducir, resuelve el `LiveTvChannel` real mediante `IMediaSourceManager.GetPlaybackMediaSources`, de forma que Jellyfin pueda aportar sus fuentes dinámicas y `OpenToken` de Live TV.
+- Si existe imagen primaria del canal, la API auxiliar devuelve la ruta HTTP de Jellyfin; nunca expone una ruta física del servidor.
 
 ## Compatibilidad objetivo
 
 Servidor: Jellyfin 10.10.7. Runtime: .NET 8. El canal usa APIs nativas del servidor y está pensado para clientes que muestran los Channels de Jellyfin, incluido Android TV. La presentación exacta depende del cliente oficial y de cómo ese cliente exponga Channels; el plugin no modifica ni inyecta código en Android TV, Android móvil o Jellyfin Web.
+
+## Instalación por repositorio
+
+En **Panel de Control → Plugins → Repositorios**, añade únicamente el repositorio unificado ODOS3D:
+
+```text
+https://raw.githubusercontent.com/odoslf/Repositorio-plugin-Jelly-fin-odos3d.lab/main/manifest.json
+```
+
+Después instala **JellyLiveNow** desde el catálogo y reinicia Jellyfin.
 
 ## API auxiliar
 
@@ -26,10 +37,8 @@ Panel de Control → Plugins → JellyLiveNow. Permite activar/desactivar el plu
 
 ## Desarrollo y verificación
 
-El workflow de GitHub Actions restaura dependencias, compila el plugin y compila/ejecuta los tests en cada PR y push a `main`. Las releases se empaquetan únicamente desde tags `v*`.
+GitHub Actions restaura dependencias, compila con warnings como error, ejecuta los tests y empaqueta únicamente `JellyLiveNow.dll`. La versión actual es **1.0.2.0**.
 
 ## Instalación manual
 
 Descarga el ZIP de la release correspondiente, extráelo en una carpeta `JellyLiveNow` dentro del directorio de plugins de Jellyfin y reinicia el servidor. No mezcles DLL de versiones anteriores en la misma carpeta.
-
-Repositorio: https://github.com/odoslf/JellyLiveNow

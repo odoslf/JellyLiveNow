@@ -10,44 +10,58 @@ on:
 permissions:
   contents: write
 
+env:
+  VERSION: 1.0.2.0
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+
       - name: Restore plugin dependencies
         run: dotnet restore JellyLiveNow/JellyLiveNow.csproj
+
       - name: Restore test dependencies
         run: dotnet restore JellyLiveNow.Tests/JellyLiveNow.Tests.csproj
+
       - name: Build plugin
-        run: dotnet build JellyLiveNow/JellyLiveNow.csproj -c Release --no-restore
+        run: dotnet build JellyLiveNow/JellyLiveNow.csproj -c Release --no-restore --warnaserror
+
       - name: Run unit tests
         run: dotnet test JellyLiveNow.Tests/JellyLiveNow.Tests.csproj -c Release --no-restore
 
-      # A Jellyfin server already provides Jellyfin.Controller/Model and ASP.NET.
-      # Ship only our plugin assembly so the plugin cannot shadow server assemblies.
       - name: Package verified plugin
         if: github.event_name != 'pull_request'
+        shell: bash
         run: |
+          set -euo pipefail
           rm -rf publish
           mkdir -p publish/plugin
           cp JellyLiveNow/bin/Release/net8.0/JellyLiveNow.dll publish/plugin/
           cd publish/plugin
-          zip -9 ../../JellyLiveNow_1.0.1.0.zip JellyLiveNow.dll
+          zip -9 "../../JellyLiveNow_${VERSION}.zip" JellyLiveNow.dll
+          cd ../..
+          unzip -t "JellyLiveNow_${VERSION}.zip"
+          test "$(unzip -Z1 "JellyLiveNow_${VERSION}.zip" | wc -l)" -eq 1
+          test "$(unzip -Z1 "JellyLiveNow_${VERSION}.zip")" = "JellyLiveNow.dll"
 
       - name: Calculate MD5
         if: github.event_name != 'pull_request'
         id: checksum
+        shell: bash
         run: |
-          test -s JellyLiveNow_1.0.1.0.zip
-          MD5_HASH=$(md5sum JellyLiveNow_1.0.1.0.zip | awk '{print $1}')
+          set -euo pipefail
+          test -s "JellyLiveNow_${VERSION}.zip"
+          MD5_HASH=$(md5sum "JellyLiveNow_${VERSION}.zip" | awk '{print $1}')
           echo "checksum=$MD5_HASH" >> "$GITHUB_OUTPUT"
 
       - name: Publish release and repository manifest
@@ -55,13 +69,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           MD5_HASH: ${{ steps.checksum.outputs.checksum }}
+        shell: bash
         run: |
+          set -euo pipefail
           python3 - <<'PY'
           import json, os
           p = 'manifest.json'
           with open(p, encoding='utf-8') as f:
               data = json.load(f)
-          version = next(v for v in data[0]['versions'] if v['version'] == '1.0.1.0')
+          version = next(v for v in data[0]['versions'] if v['version'] == os.environ['VERSION'])
           version['checksum'] = os.environ['MD5_HASH']
           with open(p, 'w', encoding='utf-8') as f:
               json.dump(data, f, ensure_ascii=False, indent=2)
@@ -71,11 +87,13 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --quiet -- manifest.json; then
             git add manifest.json
-            git commit -m "release: finalize 1.0.1.0 checksum [skip ci]"
+            git commit -m "release: finalize ${VERSION} checksum [skip ci]"
             git push origin HEAD:main
           fi
-          if gh release view v1.0.1.0 >/dev/null 2>&1; then
-            gh release upload v1.0.1.0 JellyLiveNow_1.0.1.0.zip --clobber
+          TAG="v${VERSION}"
+          PACKAGE="JellyLiveNow_${VERSION}.zip"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$PACKAGE" --clobber
           else
-            gh release create v1.0.1.0 JellyLiveNow_1.0.1.0.zip --target main --title "JellyLiveNow 1.0.1.0" --notes "Jellyfin 10.10.7 / .NET 8. Canal nativo IChannel para mostrar una emisión Live TV activa y permitir reproducirla mediante las fuentes dinámicas del servidor. Build y tests verificados por GitHub Actions."
+            gh release create "$TAG" "$PACKAGE" --target main --title "JellyLiveNow ${VERSION}" --notes "Jellyfin 10.10.7 / .NET 8. Canal nativo IChannel para detectar una emisión Live TV activa y reproducir el mismo canal mediante las fuentes dinámicas del servidor. Corrige además el contrato de imagen del canal. Build y tests verificados por GitHub Actions."
           fi
