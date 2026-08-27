@@ -80,18 +80,41 @@ jobs:
             -v "$PWD/runtime/config:/config" \
             -v "$PWD/runtime/cache:/cache" \
             jellyfin/jellyfin:10.10.7
-          for _ in $(seq 1 90); do
+
+          ready=false
+          for _ in $(seq 1 60); do
+            if [ "$(docker inspect -f '{{.State.Running}}' jellylivenow-e2e 2>/dev/null || echo false)" != "true" ]; then
+              echo 'Jellyfin container exited during startup.' >&2
+              docker logs jellylivenow-e2e | tee artifacts/jellyfin-10.10.7-runtime.log >&2 || true
+              exit 1
+            fi
             if curl -fsS http://127.0.0.1:8096/System/Info/Public >/dev/null 2>&1; then
+              ready=true
               break
             fi
             sleep 2
           done
-          curl -fsS http://127.0.0.1:8096/System/Info/Public >/dev/null
-          docker logs jellylivenow-e2e > artifacts/jellyfin-10.10.7-runtime.log 2>&1
+
+          docker logs jellylivenow-e2e > artifacts/jellyfin-10.10.7-runtime.log 2>&1 || true
+          if [ "$ready" != "true" ]; then
+            echo 'Jellyfin did not become ready within 120 seconds.' >&2
+            cat artifacts/jellyfin-10.10.7-runtime.log >&2
+            exit 1
+          fi
+
           grep -q "Loaded plugin: JellyLiveNow ${VERSION}" artifacts/jellyfin-10.10.7-runtime.log
           if grep -E '\[ERR\].*JellyLiveNow|JellyLiveNow.*\[ERR\]' artifacts/jellyfin-10.10.7-runtime.log; then
             echo 'JellyLiveNow emitted an error in Jellyfin runtime.' >&2
             exit 1
+          fi
+
+      - name: Capture Jellyfin runtime logs
+        if: always() && github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          if docker inspect jellylivenow-e2e >/dev/null 2>&1; then
+            docker logs jellylivenow-e2e > artifacts/jellyfin-10.10.7-runtime.log 2>&1 || true
           fi
 
       - name: Stop runtime container
