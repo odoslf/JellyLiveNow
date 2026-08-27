@@ -15,11 +15,10 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
     /// <inheritdoc />
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
+        // LiveNowManager is intentionally passive and evaluates sessions on demand.
+        // This keeps the plugin out of Jellyfin's hosted-service startup graph while
+        // preserving the same native-channel and API behaviour.
         serviceCollection.AddSingleton<LiveNowManager>();
-        serviceCollection.AddHostedService(sp => sp.GetRequiredService<LiveNowManager>());
-
-        // ChannelManager receives IEnumerable<IChannel> from DI. Registering the
-        // implementation as IChannel is therefore required for Jellyfin to discover it.
         serviceCollection.AddSingleton<IChannel, JellyLiveChannel>();
     }
 }
