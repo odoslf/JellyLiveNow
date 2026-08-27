@@ -3,7 +3,6 @@ name: Build & Release JellyLiveNow
 on:
   push:
     branches: [ main ]
-    tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -17,6 +16,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
@@ -29,32 +30,52 @@ jobs:
         run: dotnet build JellyLiveNow/JellyLiveNow.csproj -c Release --no-restore
       - name: Run unit tests
         run: dotnet test JellyLiveNow.Tests/JellyLiveNow.Tests.csproj -c Release --no-restore
-      - name: Package plugin ZIP
-        if: startsWith(github.ref, 'refs/tags/')
+
+      # A Jellyfin server already provides Jellyfin.Controller/Model and ASP.NET.
+      # Ship only our plugin assembly so the plugin cannot shadow server assemblies.
+      - name: Package verified plugin
+        if: github.event_name != 'pull_request'
         run: |
-          mkdir -p publish
-          dotnet publish JellyLiveNow/JellyLiveNow.csproj -c Release -o publish/plugin --no-restore
+          rm -rf publish
+          mkdir -p publish/plugin
+          cp JellyLiveNow/bin/Release/net8.0/JellyLiveNow.dll publish/plugin/
           cd publish/plugin
-          zip -r ../../JellyLiveNow_1.0.1.0.zip .
-      - name: Validate ZIP and calculate MD5
-        if: startsWith(github.ref, 'refs/tags/')
+          zip -9 ../../JellyLiveNow_1.0.1.0.zip JellyLiveNow.dll
+
+      - name: Calculate MD5
+        if: github.event_name != 'pull_request'
         id: checksum
         run: |
-          test -f JellyLiveNow_1.0.1.0.zip
-          MD5_HASH=$(md5sum JellyLiveNow_1.0.1.0.zip | awk '{ print $1 }')
+          test -s JellyLiveNow_1.0.1.0.zip
+          MD5_HASH=$(md5sum JellyLiveNow_1.0.1.0.zip | awk '{print $1}')
           echo "checksum=$MD5_HASH" >> "$GITHUB_OUTPUT"
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: JellyLiveNow_1.0.1.0.zip
-          name: Release ${{ github.ref_name }}
-          body: |
-            ## JellyLiveNow 1.0.1.0
-            - Registers the native IChannel provider correctly in Jellyfin DI.
-            - Resolves Live TV through Jellyfin playback media-source providers.
-            - CI builds both plugin and tests before release.
-            - Target: Jellyfin 10.10.7 / .NET 8.
-            - MD5: `${{ steps.checksum.outputs.checksum }}`
-          draft: false
-          prerelease: false
+
+      - name: Publish release and repository manifest
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MD5_HASH: ${{ steps.checksum.outputs.checksum }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          p = 'manifest.json'
+          with open(p, encoding='utf-8') as f:
+              data = json.load(f)
+          version = next(v for v in data[0]['versions'] if v['version'] == '1.0.1.0')
+          version['checksum'] = os.environ['MD5_HASH']
+          with open(p, 'w', encoding='utf-8') as f:
+              json.dump(data, f, ensure_ascii=False, indent=2)
+              f.write('\n')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet -- manifest.json; then
+            git add manifest.json
+            git commit -m "release: finalize 1.0.1.0 checksum [skip ci]"
+            git push origin HEAD:main
+          fi
+          if gh release view v1.0.1.0 >/dev/null 2>&1; then
+            gh release upload v1.0.1.0 JellyLiveNow_1.0.1.0.zip --clobber
+          else
+            gh release create v1.0.1.0 JellyLiveNow_1.0.1.0.zip --target main --title "JellyLiveNow 1.0.1.0" --notes "Jellyfin 10.10.7 / .NET 8. Canal nativo IChannel para mostrar una emisión Live TV activa y permitir reproducirla mediante las fuentes dinámicas del servidor. Build y tests verificados por GitHub Actions."
+          fi
