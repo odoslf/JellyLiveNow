@@ -21,8 +21,10 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - name: Restore dependencies
-        run: dotnet restore
+      - name: Restore plugin dependencies
+        run: dotnet restore JellyLiveNow/JellyLiveNow.csproj
+      - name: Restore test dependencies
+        run: dotnet restore JellyLiveNow.Tests/JellyLiveNow.Tests.csproj
       - name: Build plugin
         run: dotnet build JellyLiveNow/JellyLiveNow.csproj -c Release --no-restore
       - name: Run unit tests
