@@ -1,4 +1,4 @@
-name: Build & Release JellyLiveNow
+name: Build, validate & release JellyLiveNow
 
 on:
   push:
@@ -16,6 +16,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -33,11 +34,21 @@ jobs:
       - name: Restore test dependencies
         run: dotnet restore JellyLiveNow.Tests/JellyLiveNow.Tests.csproj
 
-      - name: Build plugin
+      - name: Build plugin with warnings as errors
         run: dotnet build JellyLiveNow/JellyLiveNow.csproj -c Release --no-restore --warnaserror
 
       - name: Run unit tests
         run: dotnet test JellyLiveNow.Tests/JellyLiveNow.Tests.csproj -c Release --no-restore
+
+      - name: Audit dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet list JellyLiveNow/JellyLiveNow.csproj package --vulnerable --include-transitive | tee vulnerability-audit.txt
+          if grep -Eiq 'has the following vulnerable packages|\b(Critical|High|Moderate|Low)\b' vulnerability-audit.txt; then
+            echo 'Vulnerable dependency detected.' >&2
+            exit 1
+          fi
 
       - name: Package verified plugin
         if: github.event_name != 'pull_request'
@@ -53,6 +64,39 @@ jobs:
           unzip -t "JellyLiveNow_${VERSION}.zip"
           test "$(unzip -Z1 "JellyLiveNow_${VERSION}.zip" | wc -l)" -eq 1
           test "$(unzip -Z1 "JellyLiveNow_${VERSION}.zip")" = "JellyLiveNow.dll"
+
+      - name: Start official Jellyfin 10.10.7 with packaged plugin
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf runtime
+          mkdir -p "runtime/config/plugins/JellyLiveNow_${VERSION}" runtime/cache artifacts
+          unzip -q "JellyLiveNow_${VERSION}.zip" -d "runtime/config/plugins/JellyLiveNow_${VERSION}"
+          chmod -R a+rwX runtime
+          docker pull jellyfin/jellyfin:10.10.7
+          docker run -d --name jellylivenow-e2e \
+            -p 8096:8096 \
+            -v "$PWD/runtime/config:/config" \
+            -v "$PWD/runtime/cache:/cache" \
+            jellyfin/jellyfin:10.10.7
+          for _ in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8096/System/Info/Public >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8096/System/Info/Public >/dev/null
+          docker logs jellylivenow-e2e > artifacts/jellyfin-10.10.7-runtime.log 2>&1
+          grep -q "Loaded plugin: JellyLiveNow ${VERSION}" artifacts/jellyfin-10.10.7-runtime.log
+          if grep -E '\[ERR\].*JellyLiveNow|JellyLiveNow.*\[ERR\]' artifacts/jellyfin-10.10.7-runtime.log; then
+            echo 'JellyLiveNow emitted an error in Jellyfin runtime.' >&2
+            exit 1
+          fi
+
+      - name: Stop runtime container
+        if: always() && github.event_name != 'pull_request'
+        run: docker rm -f jellylivenow-e2e || true
 
       - name: Calculate MD5
         if: github.event_name != 'pull_request'
@@ -77,8 +121,9 @@ jobs:
           p = 'manifest.json'
           with open(p, encoding='utf-8') as f:
               data = json.load(f)
-          version = next(v for v in data[0]['versions'] if v['version'] == os.environ['VERSION'])
-          version['checksum'] = os.environ['MD5_HASH']
+          current = next(v for v in data[0]['versions'] if v['version'] == os.environ['VERSION'])
+          current['checksum'] = os.environ['MD5_HASH']
+          data[0]['versions'] = [current]
           with open(p, 'w', encoding='utf-8') as f:
               json.dump(data, f, ensure_ascii=False, indent=2)
               f.write('\n')
@@ -95,5 +140,15 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$PACKAGE" --clobber
           else
-            gh release create "$TAG" "$PACKAGE" --target main --title "JellyLiveNow ${VERSION}" --notes "Jellyfin 10.10.7 / .NET 8. Canal nativo IChannel para detectar una emisión Live TV activa y reproducir el mismo canal mediante las fuentes dinámicas del servidor. Corrige además el contrato de imagen del canal. Build y tests verificados por GitHub Actions."
+            gh release create "$TAG" "$PACKAGE" --target main --title "JellyLiveNow ${VERSION}" --notes "Jellyfin 10.10.7 / .NET 8. Validado cargando el plugin en el servidor oficial, además de build, tests, auditoría y empaquetado. Canal nativo IChannel para detectar una emisión Live TV activa y resolver sus fuentes dinámicas de reproducción."
           fi
+
+      - name: Upload validation evidence
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: JellyLiveNow-${{ env.VERSION }}-validation
+          path: |
+            artifacts/jellyfin-10.10.7-runtime.log
+            vulnerability-audit.txt
+          if-no-files-found: warn
