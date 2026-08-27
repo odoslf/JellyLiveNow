@@ -1,68 +1,35 @@
 # JellyLiveNow
 
-**JellyLiveNow** es un plugin independiente para Jellyfin Server (v10.10.7, .NET 8) que permite a los usuarios del servidor descubrir cuándo alguien está viendo un canal de televisión en directo (Live TV / HDHomeRun) y unirse a esa emisión en directo de manera transparente e instantánea.
+Plugin para Jellyfin Server **10.10.7 / .NET 8** que detecta si existe una reproducción Live TV activa y publica un canal nativo llamado **Viendo en TV**.
 
----
+## Funcionamiento
 
-## 🚀 Características principales
+- Detecta únicamente elementos `LiveTvChannel` / `LiveTvProgram` de sesiones activas.
+- No confunde películas, episodios o audio con Live TV.
+- Publica como máximo una entrada activa.
+- Cuando no hay Live TV activa, el proveedor no devuelve contenido.
+- No expone usuario, IP, dispositivo ni número de espectadores.
+- Implementa `IChannel` + `IRequiresMediaInfoCallback` y registra el proveedor como `IChannel` en el contenedor DI de Jellyfin.
+- Para reproducir, resuelve el `LiveTvChannel` real mediante `IMediaSourceManager.GetPlaybackMediaSources`, de forma que Jellyfin pueda aportar sus fuentes dinámicas y `OpenToken` de Live TV.
 
-- **Viendo en TV**: Muestra de forma nativa un contenedor/canal con el canal Live TV que se está emitiendo actualmente en el servidor.
-- **Unirse con un clic**: Al pulsar en la tarjeta del canal, el cliente de Jellyfin (Android TV, Web, Android Móvil, etc.) inicia su propia reproducción nativa del mismo canal real de Live TV en Jellyfin.
-- **Regla de oro (Solo un canal)**: Se muestra como máximo **un único canal activo**. Si varios usuarios están viendo ese mismo canal, aparece una sola entrada en la interfaz.
-- **Ocultamiento automático**: Si nadie está reproduciendo televisión en directo, "Viendo en TV" desaparece por completo sin dejar tarjetas vacías ni mensajes.
-- **Privacidad deliberada**: No muestra nombres de usuario, número de espectadores, avatares ni quién inició la emisión.
-- **Integración Nativa para Android TV**: Utiliza la arquitectura de canales nativos de Jellyfin (`IChannel`), permitiendo que el cliente oficial de Jellyfin para Android TV navegue y reproduzca con el mando a distancia sin hacks de frontend ni JS inyectado.
-- **Soporte de Banner para clientes Web**: Incluye un aviso opcional en Jellyfin Web con opción de descarte temporal (la "X") para esa sesión/emisión.
+## Compatibilidad objetivo
 
----
+Servidor: Jellyfin 10.10.7. Runtime: .NET 8. El canal usa APIs nativas del servidor y está pensado para clientes que muestran los Channels de Jellyfin, incluido Android TV. La presentación exacta depende del cliente oficial y de cómo ese cliente exponga Channels; el plugin no modifica ni inyecta código en Android TV, Android móvil o Jellyfin Web.
 
-## 🛠️ Requisitos del sistema
+## API auxiliar
 
-- **Jellyfin Server**: 10.10.7
-- **Runtime**: .NET 8
-- **Live TV**: HDHomeRun (o cualquier sintonizador de Live TV configurado en Jellyfin)
-- **Clientes soportados**:
-  - Jellyfin Android TV (Nativo)
-  - Jellyfin Web
-  - Jellyfin Android / iOS / Desktop
+`GET /JellyLiveNow/Status` (alias `/ActiveChannel`) devuelve el estado activo para un usuario autenticado. `POST /JellyLiveNow/Dismiss` permite marcar el aviso como descartado para ese usuario durante la emisión actual. Esta API queda disponible para una interfaz que quiera consumirla, pero **la versión actual no inyecta automáticamente un banner en los clientes oficiales**.
 
----
+## Configuración
 
-## 📦 Instalación
+Panel de Control → Plugins → JellyLiveNow. Permite activar/desactivar el plugin y cambiar el nombre del canal. La opción histórica de Web banner se conserva por compatibilidad de configuración/API, pero no implica inyección automática en Jellyfin Web.
 
-1. Descarga el archivo `JellyLiveNow_1.0.0.0.zip` de las [Releases](https://github.com/odoslf/Jellyfin-JellyLiveNow/releases).
-2. Extrae el contenido en el directorio de plugins de tu servidor Jellyfin:
-   - Linux: `/var/lib/jellyfin/plugins/JellyLiveNow/`
-   - Docker: `/config/plugins/JellyLiveNow/`
-   - Windows: `%ProgramData%\Jellyfin\Server\plugins\JellyLiveNow\`
-3. Reinicia Jellyfin Server.
+## Desarrollo y verificación
 
-Alternativamente, añade el manifiesto `manifest.json` al catálogo de repositorios de Jellyfin.
+El workflow de GitHub Actions restaura dependencias, compila el plugin y compila/ejecuta los tests en cada PR y push a `main`. Las releases se empaquetan únicamente desde tags `v*`.
 
----
+## Instalación manual
 
-## ⚙️ Configuración
+Descarga el ZIP de la release correspondiente, extráelo en una carpeta `JellyLiveNow` dentro del directorio de plugins de Jellyfin y reinicia el servidor. No mezcles DLL de versiones anteriores en la misma carpeta.
 
-Accede a **Panel de Control -> Plugins -> JellyLiveNow**:
-
-- **Enable JellyLiveNow**: Activa o desactiva la funcionalidad general del plugin.
-- **Enable Web banner**: Activa o desactiva el banner informativo superior en el cliente Jellyfin Web.
-- **Nombre del canal**: Personaliza el nombre del contenedor (por defecto: `Viendo en TV`).
-
----
-
-## 📱 Compatibilidad y funcionamiento por cliente
-
-| Cliente | Navegación Nativa | Reproductor Nativo | Banner Superior |
-| :--- | :---: | :---: | :---: |
-| **Android TV Oficial** | ✅ Sí | ✅ Sí (Directo) | N/A (Usa contenedor nativo) |
-| **Jellyfin Web** | ✅ Sí | ✅ Sí | ✅ Sí (con opción de descarte `✕`) |
-| **Jellyfin Android Móvil** | ✅ Sí | ✅ Sí | ✅ Sí |
-
----
-
-## ℹ️ Limitaciones reales y privacidad
-
-1. **Un solo canal a la vez**: Por diseño, se promociona un único canal activo en el servidor.
-2. **Sin streaming duplicado**: JellyLiveNow no retransmite ni duplica el stream del primer usuario; el segundo usuario abre una sesión de reproducción estándar sobre el canal Live TV de Jellyfin.
-3. **Privacidad**: No se registra ni se expone el historial de reproducciones, UserId, IP ni datos del dispositivo.
+Repositorio: https://github.com/odoslf/JellyLiveNow
