@@ -1,26 +1,22 @@
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Controller.Session;
 using MediaBrowser.Model.Entities;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace JellyLiveNow.Services;
 
 /// <summary>
-/// Service that tracks active Live TV playback sessions across Jellyfin.
+/// Tracks the currently active Live TV channel by evaluating Jellyfin sessions on demand.
+/// Keeping this service passive avoids participating in Jellyfin's hosted-service startup graph.
 /// </summary>
-public class LiveNowManager : IHostedService, IDisposable
+public sealed class LiveNowManager
 {
     private readonly ISessionManager _sessionManager;
     private readonly ILibraryManager _libraryManager;
-    private readonly ILiveTvManager _liveTvManager;
     private readonly ILogger<LiveNowManager> _logger;
     private readonly ConcurrentDictionary<Guid, byte> _dismissedUserIds = new();
     private readonly object _lock = new();
@@ -37,12 +33,10 @@ public class LiveNowManager : IHostedService, IDisposable
     public LiveNowManager(
         ISessionManager sessionManager,
         ILibraryManager libraryManager,
-        ILiveTvManager liveTvManager,
         ILogger<LiveNowManager> logger)
     {
         _sessionManager = sessionManager;
         _libraryManager = libraryManager;
-        _liveTvManager = liveTvManager;
         _logger = logger;
     }
 
@@ -60,32 +54,6 @@ public class LiveNowManager : IHostedService, IDisposable
 
     /// <summary>Gets a Jellyfin API image URL for the active channel if available.</summary>
     public string ActiveImageUrl { get { lock (_lock) { return _activeImageUrl; } } }
-
-    /// <inheritdoc />
-    public Task StartAsync(CancellationToken cancellationToken)
-    {
-        _sessionManager.PlaybackStart += OnPlaybackStart;
-        _sessionManager.PlaybackProgress += OnPlaybackProgress;
-        _sessionManager.PlaybackStopped += OnPlaybackStopped;
-        _sessionManager.SessionEnded += OnSessionEnded;
-        RefreshActiveChannelState();
-        return Task.CompletedTask;
-    }
-
-    /// <inheritdoc />
-    public Task StopAsync(CancellationToken cancellationToken)
-    {
-        _sessionManager.PlaybackStart -= OnPlaybackStart;
-        _sessionManager.PlaybackProgress -= OnPlaybackProgress;
-        _sessionManager.PlaybackStopped -= OnPlaybackStopped;
-        _sessionManager.SessionEnded -= OnSessionEnded;
-        return Task.CompletedTask;
-    }
-
-    private void OnPlaybackStart(object? sender, PlaybackProgressEventArgs e) => RefreshActiveChannelState();
-    private void OnPlaybackProgress(object? sender, PlaybackProgressEventArgs e) => RefreshActiveChannelState();
-    private void OnPlaybackStopped(object? sender, PlaybackStopEventArgs e) => RefreshActiveChannelState();
-    private void OnSessionEnded(object? sender, SessionEventArgs e) => RefreshActiveChannelState();
 
     /// <summary>Evaluates current active sessions and updates the active Live TV channel state.</summary>
     public void RefreshActiveChannelState()
@@ -137,8 +105,6 @@ public class LiveNowManager : IHostedService, IDisposable
     public static bool TryGetLiveTvChannelId(BaseItem item, out Guid channelId)
     {
         channelId = Guid.Empty;
-        if (item == null) return false;
-
         if (item is LiveTvChannel liveChannel)
         {
             channelId = liveChannel.Id;
@@ -151,8 +117,10 @@ public class LiveNowManager : IHostedService, IDisposable
             return true;
         }
 
-        var ns = item.GetType().Namespace;
-        if (item.ChannelId != Guid.Empty && ns != null && ns.Contains("LiveTv", StringComparison.Ordinal))
+        var itemNamespace = item.GetType().Namespace;
+        if (item.ChannelId != Guid.Empty
+            && itemNamespace != null
+            && itemNamespace.Contains("LiveTv", StringComparison.Ordinal))
         {
             channelId = item.ChannelId;
             return true;
@@ -185,7 +153,7 @@ public class LiveNowManager : IHostedService, IDisposable
                 _activeOverview = channelItem?.Overview ?? string.Empty;
             }
 
-            _activeImageUrl = channelItem?.HasImage(ImageType.Primary) == true
+            _activeImageUrl = channelItem?.HasImage(ImageType.Primary, 0) == true
                 ? $"/Items/{channelId:N}/Images/Primary"
                 : string.Empty;
         }
@@ -214,11 +182,5 @@ public class LiveNowManager : IHostedService, IDisposable
         {
             _dismissedUserIds.TryAdd(userId, 0);
         }
-    }
-
-    /// <inheritdoc />
-    public void Dispose()
-    {
-        GC.SuppressFinalize(this);
     }
 }
