@@ -11,7 +11,6 @@ using JellyLiveNow.Services;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Channels;
 using MediaBrowser.Controller.Entities;
-using MediaBrowser.Controller.Entities.Audio;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
@@ -32,7 +31,6 @@ public class LiveNowTests
 {
     private readonly Mock<ISessionManager> _sessionManagerMock = new();
     private readonly Mock<ILibraryManager> _libraryManagerMock = new();
-    private readonly Mock<ILiveTvManager> _liveTvManagerMock = new();
     private readonly Mock<IMediaSourceManager> _mediaSourceManagerMock = new();
     private readonly Mock<ILogger<LiveNowManager>> _managerLoggerMock = new();
     private readonly Mock<ILogger<JellyLiveChannel>> _channelLoggerMock = new();
@@ -48,7 +46,7 @@ public class LiveNowTests
     }
 
     private LiveNowManager CreateManager() => new(
-        _sessionManagerMock.Object, _libraryManagerMock.Object, _liveTvManagerMock.Object, _managerLoggerMock.Object);
+        _sessionManagerMock.Object, _libraryManagerMock.Object, _managerLoggerMock.Object);
 
     private JellyLiveChannel CreateChannel(LiveNowManager manager) => new(
         manager, _libraryManagerMock.Object, _mediaSourceManagerMock.Object, _channelLoggerMock.Object);
