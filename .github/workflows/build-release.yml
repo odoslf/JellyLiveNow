@@ -2,8 +2,10 @@ name: Build & Release JellyLiveNow
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -12,63 +14,45 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-
       - name: Restore dependencies
         run: dotnet restore
-
-      - name: Build Release
+      - name: Build plugin
         run: dotnet build JellyLiveNow/JellyLiveNow.csproj -c Release --no-restore
-
-      - name: Run Unit Tests
-        run: dotnet test JellyLiveNow.Tests/JellyLiveNow.Tests.csproj -c Release --no-build
-
-      - name: Package Plugin ZIP
+      - name: Run unit tests
+        run: dotnet test JellyLiveNow.Tests/JellyLiveNow.Tests.csproj -c Release --no-restore
+      - name: Package plugin ZIP
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
           mkdir -p publish
-          dotnet publish JellyLiveNow/JellyLiveNow.csproj -c Release -o publish/plugin --no-build
+          dotnet publish JellyLiveNow/JellyLiveNow.csproj -c Release -o publish/plugin --no-restore
           cd publish/plugin
-          zip -r ../../JellyLiveNow_1.0.0.0.zip .
-          cd ../..
-
-      - name: Validate ZIP and Calculate MD5 Checksum
+          zip -r ../../JellyLiveNow_1.0.1.0.zip .
+      - name: Validate ZIP and calculate MD5
+        if: startsWith(github.ref, 'refs/tags/')
         id: checksum
         run: |
-          if [ ! -f JellyLiveNow_1.0.0.0.zip ]; then
-            echo "Error: JellyLiveNow_1.0.0.0.zip was not created!"
-            exit 1
-          fi
-          MD5_HASH=$(md5sum JellyLiveNow_1.0.0.0.zip | awk '{ print $1 }')
-          echo "MD5 Checksum: $MD5_HASH"
-          echo "checksum=$MD5_HASH" >> $GITHUB_OUTPUT
-
+          test -f JellyLiveNow_1.0.1.0.zip
+          MD5_HASH=$(md5sum JellyLiveNow_1.0.1.0.zip | awk '{ print $1 }')
+          echo "checksum=$MD5_HASH" >> "$GITHUB_OUTPUT"
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: JellyLiveNow_1.0.0.0.zip
+          files: JellyLiveNow_1.0.1.0.zip
           name: Release ${{ github.ref_name }}
           body: |
-            ## JellyLiveNow Version 1.0.0.0
-            - Native Live TV sharing channel "Viendo en TV" for Jellyfin 10.10.7.
-            - Compatible with Jellyfin Android TV native client, Web, and Mobile.
-            - MD5 Checksum: `${{ steps.checksum.outputs.checksum }}`
+            ## JellyLiveNow 1.0.1.0
+            - Registers the native IChannel provider correctly in Jellyfin DI.
+            - Resolves Live TV through Jellyfin playback media-source providers.
+            - CI builds both plugin and tests before release.
+            - Target: Jellyfin 10.10.7 / .NET 8.
+            - MD5: `${{ steps.checksum.outputs.checksum }}`
           draft: false
           prerelease: false
-
-      - name: Notify Central Catalog
-        if: startsWith(github.ref, 'refs/tags/') && secrets.CATALOG_PAT != ''
-        run: |
-          curl -X POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.CATALOG_PAT }}" \
-            https://api.github.com/repos/odoslf/jellyfin-plugin-catalog/dispatches \
-            -d '{"event_type": "plugin_release", "client_payload": {"plugin": "JellyLiveNow", "version": "1.0.0.0", "checksum": "'"${{ steps.checksum.outputs.checksum }}"'"}}'
