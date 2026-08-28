@@ -40,7 +40,7 @@ public class JellyLiveChannel : IChannel, IHasFolderAttributes, IRequiresMediaIn
 
     public string Name => Plugin.Instance?.Configuration.ChannelName ?? "Viendo en TV";
     public string Description => "Canal en directo activo actualmente en el servidor";
-    public string DataVersion => "1.0.2.0";
+    public string DataVersion => "1.0.3.0";
     public string HomePageUrl => string.Empty;
     public ChannelParentalRating ParentalRating => ChannelParentalRating.GeneralAudience;
     public string[] Attributes => new[] { "ViendoEnTV" };
@@ -119,9 +119,6 @@ public class JellyLiveChannel : IChannel, IHasFolderAttributes, IRequiresMediaIn
             return Array.Empty<MediaSourceInfo>();
         }
 
-        // Live TV sources are dynamic. GetPlaybackMediaSources asks Jellyfin's registered
-        // IMediaSourceProviders (including LiveTvMediaSourceProvider) for the proper source,
-        // OpenToken and live-stream metadata. GetStaticMediaSources alone can miss these.
         return await _mediaSourceManager
             .GetPlaybackMediaSources(liveChannel, null!, false, false, cancellationToken)
             .ConfigureAwait(false);
