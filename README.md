@@ -37,7 +37,7 @@ Panel de Control → Plugins → JellyLiveNow. Permite activar/desactivar el plu
 
 ## Desarrollo y verificación
 
-GitHub Actions restaura dependencias, compila con warnings como error, ejecuta los tests y empaqueta únicamente `JellyLiveNow.dll`. La versión actual es **1.0.2.0**.
+GitHub Actions restaura dependencias, compila con warnings como error, ejecuta tests, audita dependencias, empaqueta únicamente `JellyLiveNow.dll` y arranca el paquete resultante en la imagen oficial `jellyfin/jellyfin:10.10.7`. La versión estable actual es **1.0.3.0**.
 
 ## Instalación manual
 
